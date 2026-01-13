@@ -8,8 +8,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(__dirname));
-
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
 const pendingUsers = new Map();
@@ -17,28 +15,30 @@ const activeUsers = new Map();
 
 // --- ROUTES ---
 
+// 🌟 Route for Admin Page (Placed BEFORE static to ensure it loads)
+app.get("/admin", (req, res) => {
+    res.sendFile(path.join(__dirname, "admin.html"));
+});
+
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// 🌟 NEW: Dedicated Admin Route
-app.get("/admin", (req, res) => {
-    res.sendFile(path.join(__dirname, "admin.html"));
-});
+app.use(express.static(__dirname));
 
 // --- SOCKET LOGIC ---
 
 io.on("connection", (socket) => {
 
-    // When the Admin page opens, it will ask for the current lists
-socket.on("admin-fetch-lists", (pass) => {
-    if (pass === ADMIN_PASSWORD) {
-        socket.emit("user-list-update", {
-            pending: Array.from(pendingUsers.keys()),
-            active: Array.from(activeUsers.keys())
-        });
-    }
-});
+    // 🌟 NEW: Fetch current lists when Admin logs in
+    socket.on("admin-fetch-lists", (pass) => {
+        if (pass === ADMIN_PASSWORD) {
+            socket.emit("user-list-update", {
+                pending: Array.from(pendingUsers.keys()),
+                active: Array.from(activeUsers.keys())
+            });
+        }
+    });
 
     // 1. Send chat history
     supabase
@@ -61,7 +61,7 @@ socket.on("admin-fetch-lists", (pass) => {
 
         console.log(`\n[!] REQUEST: "${name}" wants to join.`);
         
-        // 🌟 NEW: Notify the Admin Page that someone is waiting
+        // Notify the Admin Page that someone is waiting
         io.emit("admin-notification", { name: name, id: cleanName });
     });
 
@@ -88,7 +88,7 @@ socket.on("admin-fetch-lists", (pass) => {
                 io.emit("system", `${targetSocket.username} joined the chat`);
                 io.emit("online-users", Array.from(activeUsers.keys()));
                 
-                // 🌟 NEW: Update the Admin UI lists
+                // Update the Admin UI lists
                 io.emit("user-list-update", {
                     pending: Array.from(pendingUsers.keys()),
                     active: Array.from(activeUsers.keys())
@@ -101,7 +101,12 @@ socket.on("admin-fetch-lists", (pass) => {
                 targetSocket.emit("permission-denied");
                 targetSocket.disconnect();
                 pendingUsers.delete(targetName);
-                io.emit("admin-refresh-pending", Array.from(pendingUsers.keys()));
+                
+                // Refresh Admin UI
+                io.emit("user-list-update", {
+                    pending: Array.from(pendingUsers.keys()),
+                    active: Array.from(activeUsers.keys())
+                });
             }
         }
         else if (command === "kick") {
@@ -111,7 +116,12 @@ socket.on("admin-fetch-lists", (pass) => {
                 targetSocket.disconnect();
                 activeUsers.delete(targetName);
                 io.emit("online-users", Array.from(activeUsers.keys()));
-                io.emit("admin-refresh-active", Array.from(activeUsers.keys()));
+                
+                // Refresh Admin UI
+                io.emit("user-list-update", {
+                    pending: Array.from(pendingUsers.keys()),
+                    active: Array.from(activeUsers.keys())
+                });
             }
         }
     });
