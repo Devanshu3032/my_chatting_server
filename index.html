@@ -14,9 +14,10 @@
         input { width: 85%; padding: 12px; margin: 15px 0; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; outline: none; }
         button { padding: 12px 25px; background: #38bdf8; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; color: #0f172a; }
         #messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; list-style: none; margin: 0; }
-        .msg-item { max-width: 80%; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; }
-        .my-message { align-self: flex-end; background: #0369a1; }
-        .other-message { align-self: flex-start; background: #334155; }
+        .msg-item { max-width: 80%; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; min-width: 100px; }
+        .my-message { align-self: flex-end; background: #0369a1; border-bottom-right-radius: 2px; }
+        .other-message { align-self: flex-start; background: #334155; border-bottom-left-radius: 2px; }
+        .system-msg { align-self: center; font-size: 0.75rem; color: #94a3b8; margin: 10px 0; font-style: italic; }
     </style>
 </head>
 <body>
@@ -47,13 +48,14 @@
     let name = "";
 
     function join() {
-        name = document.getElementById('username').value;
+        name = document.getElementById('username').value.trim();
         if (!name) return;
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('waiting-screen').style.display = 'block';
         socket.emit('request-access', name);
     }
 
+    // --- ACCESS HANDLERS ---
     socket.on('permission-granted', () => {
         document.getElementById('waiting-screen').style.display = 'none';
         document.getElementById('chat-container').style.display = 'flex';
@@ -70,32 +72,7 @@
         location.reload();
     });
 
-    socket.on("chat-history", (messages) => {
-    messages.forEach(m => {
-        const item = document.createElement('li');
-        // Check if the message is from you (ensure 'name' variable matches m.username)
-        const isMe = m.username === name; 
-        
-        item.className = `msg-item ${isMe ? 'my-message' : 'other-message'}`;
-        
-        // Updated HTML to include the WhatsApp-style layout with time
-        item.innerHTML = `
-            <b style="display:block; font-size:10px; color:#38bdf8; margin-bottom:4px;">${m.username}</b>
-            <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;">
-                <span style="word-break: break-word;">${m.text}</span>
-                <span style="font-size: 10px; color: rgba(255,255,255,0.5); min-width: 45px; text-align: right;">${m.time || ''}</span>
-            </div>
-        `;
-        
-        document.getElementById('messages').appendChild(item);
-    });
-
-    // Scroll to the bottom after all history messages are added
-    const msgContainer = document.getElementById('messages');
-    msgContainer.scrollTop = msgContainer.scrollHeight;
-});
-
-
+    // --- CHAT LOGIC ---
     function send() {
         const input = document.getElementById('input');
         if (input.value) {
@@ -104,18 +81,61 @@
         }
     }
 
+    // Enter key to send
+    document.getElementById('input').addEventListener('keypress', (e) => {
+        if(e.key === 'Enter') send();
+    });
+
+    // Displaying standard messages
     socket.on('chat message', (data) => {
+        addMessageToUI(data.user, data.text, data.time, data.user === name);
+    });
+
+    // Displaying history
+    socket.on("chat-history", (messages) => {
+        messages.forEach(m => {
+            addMessageToUI(m.username, m.text, m.time, m.username === name);
+        });
+    });
+
+    // Displaying system notifications (Joins/Leaves)
+    socket.on("system", (message) => {
         const item = document.createElement('li');
-        const isMe = data.user === name;
+        item.className = "system-msg";
+        item.textContent = `— ${message} —`;
+        document.getElementById('messages').appendChild(item);
+        scrollToBottom();
+    });
+
+    // Helper to keep code clean
+    function addMessageToUI(user, text, time, isMe) {
+        const item = document.createElement('li');
         item.className = `msg-item ${isMe ? 'my-message' : 'other-message'}`;
-item.innerHTML = `
-    <b style="display:block; font-size:10px; color:#38bdf8; margin-bottom:4px;">${data.user}</b>
-    <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;">
-        <span style="word-break: break-word;">${data.text}</span>
-        <span style="font-size: 10px; color: rgba(255,255,255,0.5); min-width: 45px; text-align: right;">${data.time}</span>
-    </div>
-`;        document.getElementById('messages').appendChild(item);
-        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+        item.innerHTML = `
+            <b style="display:block; font-size:10px; color:#38bdf8; margin-bottom:4px;">${user}</b>
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;">
+                <span style="word-break: break-word;">${text}</span>
+                <span style="font-size: 10px; color: rgba(255,255,255,0.5); min-width: 45px; text-align: right;">${time || ''}</span>
+            </div>
+        `;
+        document.getElementById('messages').appendChild(item);
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        const msgContainer = document.getElementById('messages');
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+    }
+
+    // 🌟 ADMIN SHORTCUT: Ctrl + Q 🌟
+    window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'q') {
+            const pass = prompt("🔐 Admin Password:");
+            const cmd = prompt("📜 Command (allow name / kick name / deny name):");
+            if (pass && cmd) {
+                socket.emit("admin-command", { password: pass, fullCommand: cmd });
+            }
+        }
     });
 </script>
 </body>
