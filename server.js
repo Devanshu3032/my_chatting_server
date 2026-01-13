@@ -30,6 +30,16 @@ app.get("/admin", (req, res) => {
 
 io.on("connection", (socket) => {
 
+    // When the Admin page opens, it will ask for the current lists
+socket.on("admin-fetch-lists", (pass) => {
+    if (pass === ADMIN_PASSWORD) {
+        socket.emit("user-list-update", {
+            pending: Array.from(pendingUsers.keys()),
+            active: Array.from(activeUsers.keys())
+        });
+    }
+});
+
     // 1. Send chat history
     supabase
         .from("messages")

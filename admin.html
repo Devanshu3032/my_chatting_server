@@ -63,6 +63,7 @@
         if (!input) return;
         password = input;
         document.getElementById('login-overlay').style.display = 'none';
+        socket.emit("admin-fetch-lists", password);
     }
 
     // 1. Listen for individual new requests
