@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; }
+        .user-card { background: #1e293b; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #334155; }
+        button { padding: 8px 15px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; }
+        .allow { background: #22c55e; color: white; margin-right: 5px; }
+        .deny { background: #ef4444; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Admin Control Panel</h1>
+    <div id="password-section">
+        <input type="password" id="adminPass" placeholder="Enter Admin Password">
+        <button onclick="savePass()">Login</button>
+    </div>
+
+    <div id="control-section" style="display:none;">
+        <h3>Pending Requests</h3>
+        <div id="pending-list"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let pass = "";
+
+        function savePass() {
+            pass = document.getElementById('adminPass').value;
+            document.getElementById('password-section').style.display = 'none';
+            document.getElementById('control-section').style.display = 'block';
+        }
+
+        // Listen for new requests
+        socket.on('admin-notification', (name) => {
+            const list = document.getElementById('pending-list');
+            const div = document.createElement('div');
+            div.className = "user-card";
+            div.id = `card-${name.toLowerCase()}`;
+            div.innerHTML = `
+                <span>${name} wants to join</span>
+                <div>
+                    <button class="allow" onclick="runCmd('allow ${name}')">Allow</button>
+                    <button class="deny" onclick="runCmd('deny ${name}')">Deny</button>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+
+        function runCmd(fullCommand) {
+            socket.emit("admin-command", { password: pass, fullCommand: fullCommand });
+            // Remove from list after clicking
+            const name = fullCommand.split(' ')[1].toLowerCase();
+            document.getElementById(`card-${name}`)?.remove();
+        }
+    </script>
+</body>
+</html>

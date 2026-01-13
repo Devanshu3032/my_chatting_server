@@ -2,7 +2,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
-const supabase = require("./supabase"); // 🔥 Supabase client
+const supabase = require("./supabase"); 
 
 const app = express();
 const server = http.createServer(app);
@@ -10,20 +10,27 @@ const io = new Server(server);
 
 app.use(express.static(__dirname));
 
-// Use an Environment Variable for the password (set this in Render/Vercel later)
-// For now, it defaults to 'admin123'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
 const pendingUsers = new Map();
 const activeUsers = new Map();
 
+// --- ROUTES ---
+
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
+// 🌟 NEW: Dedicated Admin Route
+app.get("/admin", (req, res) => {
+    res.sendFile(path.join(__dirname, "admin.html"));
+});
+
+// --- SOCKET LOGIC ---
+
 io.on("connection", (socket) => {
 
-    // 1. Send chat history when user connects
+    // 1. Send chat history
     supabase
         .from("messages")
         .select("*")
@@ -43,14 +50,15 @@ io.on("connection", (socket) => {
         pendingUsers.set(cleanName, socket);
 
         console.log(`\n[!] REQUEST: "${name}" wants to join.`);
-        // Note: You can still see this in the Cloud Logs!
+        
+        // 🌟 NEW: Notify the Admin Page that someone is waiting
+        io.emit("admin-notification", { name: name, id: cleanName });
     });
 
-    // 🌟 3. NEW: ADMIN COMMAND LOGIC (Replaces Terminal)
+    // 3. ADMIN COMMAND LOGIC
     socket.on("admin-command", (data) => {
         const { password, fullCommand } = data;
 
-        // Security Check
         if (password !== ADMIN_PASSWORD) {
             return socket.emit("system", "❌ Access Denied: Invalid Admin Password");
         }
@@ -69,7 +77,12 @@ io.on("connection", (socket) => {
 
                 io.emit("system", `${targetSocket.username} joined the chat`);
                 io.emit("online-users", Array.from(activeUsers.keys()));
-                console.log(`✅ ALLOWED via Admin UI: ${targetSocket.username}`);
+                
+                // 🌟 NEW: Update the Admin UI lists
+                io.emit("user-list-update", {
+                    pending: Array.from(pendingUsers.keys()),
+                    active: Array.from(activeUsers.keys())
+                });
             }
         } 
         else if (command === "deny") {
@@ -78,6 +91,7 @@ io.on("connection", (socket) => {
                 targetSocket.emit("permission-denied");
                 targetSocket.disconnect();
                 pendingUsers.delete(targetName);
+                io.emit("admin-refresh-pending", Array.from(pendingUsers.keys()));
             }
         }
         else if (command === "kick") {
@@ -87,6 +101,7 @@ io.on("connection", (socket) => {
                 targetSocket.disconnect();
                 activeUsers.delete(targetName);
                 io.emit("online-users", Array.from(activeUsers.keys()));
+                io.emit("admin-refresh-active", Array.from(activeUsers.keys()));
             }
         }
     });
@@ -96,11 +111,8 @@ io.on("connection", (socket) => {
         if (!socket.authorized) return;
 
         const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        // Send to everyone live
         io.emit("chat message", { user: socket.username, text: msg, time: timeString });
 
-        // Save to Supabase
         try {
             const { error } = await supabase.from("messages").insert([
                 { username: socket.username, text: msg, time: timeString }
@@ -118,15 +130,19 @@ io.on("connection", (socket) => {
             activeUsers.delete(cleanName);
             io.emit("system", `${socket.username} left the chat`);
             io.emit("online-users", Array.from(activeUsers.keys()));
+            
+            // Refresh Admin UI
+            io.emit("user-list-update", {
+                pending: Array.from(pendingUsers.keys()),
+                active: Array.from(activeUsers.keys())
+            });
         }
     });
 });
 
-// Use process.env.PORT for cloud deployment compatibility
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`\n🚀 DEV COMMUNICATION LIVE`);
     console.log(`URL: http://localhost:${PORT}`);
     console.log(`Admin Password: ${ADMIN_PASSWORD}`);
-    console.log(`-------------------------------------------`);
 });
