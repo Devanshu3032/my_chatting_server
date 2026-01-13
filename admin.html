@@ -1,60 +1,109 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Admin Dashboard</title>
+    <meta charset="UTF-8">
+    <title>Admin Panel | Dev Communication</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; }
-        .user-card { background: #1e293b; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #334155; }
-        button { padding: 8px 15px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; }
-        .allow { background: #22c55e; color: white; margin-right: 5px; }
-        .deny { background: #ef4444; color: white; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 30px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; }
+        h2 { color: #38bdf8; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        
+        .user-row { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 12px; background: #0f172a; border-radius: 8px; margin-top: 10px;
+        }
+        
+        button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-allow { background: #22c55e; color: white; }
+        .btn-deny { background: #ef4444; color: white; margin-left: 5px; }
+        .btn-kick { background: #f59e0b; color: white; }
+        
+        #login-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #0f172a; display: flex; justify-content: center; align-items: center; z-index: 100;
+        }
     </style>
 </head>
 <body>
-    <h1>Admin Control Panel</h1>
-    <div id="password-section">
-        <input type="password" id="adminPass" placeholder="Enter Admin Password">
-        <button onclick="savePass()">Login</button>
+
+    <div id="login-overlay">
+        <div class="section" style="width: 300px; text-align: center;">
+            <h3>Admin Login</h3>
+            <input type="password" id="adminPass" placeholder="Password" style="width: 80%; padding: 10px; margin-bottom: 15px;">
+            <button class="btn-allow" onclick="login()">Enter Dashboard</button>
+        </div>
     </div>
 
-    <div id="control-section" style="display:none;">
-        <h3>Pending Requests</h3>
-        <div id="pending-list"></div>
+    <div class="container">
+        <h1>Admin Control Center</h1>
+
+        <div class="section">
+            <h2>Pending Requests</h2>
+            <div id="pending-list">
+                <p style="color: #94a3b8;">No pending requests...</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Active Users</h2>
+            <div id="active-list">
+                <p style="color: #94a3b8;">No users online...</p>
+            </div>
+        </div>
     </div>
 
-    <script>
-        const socket = io();
-        let pass = "";
+<script>
+    const socket = io();
+    let password = "";
 
-        function savePass() {
-            pass = document.getElementById('adminPass').value;
-            document.getElementById('password-section').style.display = 'none';
-            document.getElementById('control-section').style.display = 'block';
-        }
+    function login() {
+        const input = document.getElementById('adminPass').value;
+        if (!input) return;
+        password = input;
+        document.getElementById('login-overlay').style.display = 'none';
+    }
 
-        // Listen for new requests
-        socket.on('admin-notification', (name) => {
-            const list = document.getElementById('pending-list');
+    // 1. Listen for individual new requests
+    socket.on('admin-notification', (data) => {
+        updatePendingUI(data.name);
+    });
+
+    // 2. Listen for full list updates (triggered when someone joins/leaves)
+    socket.on('user-list-update', (lists) => {
+        renderLists(lists.pending, lists.active);
+    });
+
+    function renderLists(pending, active) {
+        const pList = document.getElementById('pending-list');
+        const aList = document.getElementById('active-list');
+
+        pList.innerHTML = pending.length ? "" : '<p style="color: #94a3b8;">No pending requests...</p>';
+        pending.forEach(name => {
             const div = document.createElement('div');
-            div.className = "user-card";
-            div.id = `card-${name.toLowerCase()}`;
-            div.innerHTML = `
-                <span>${name} wants to join</span>
+            div.className = "user-row";
+            div.innerHTML = `<span>${name}</span> 
                 <div>
-                    <button class="allow" onclick="runCmd('allow ${name}')">Allow</button>
-                    <button class="deny" onclick="runCmd('deny ${name}')">Deny</button>
-                </div>
-            `;
-            list.appendChild(div);
+                    <button class="btn-allow" onclick="exec('allow ${name}')">Allow</button>
+                    <button class="btn-deny" onclick="exec('deny ${name}')">Deny</button>
+                </div>`;
+            pList.appendChild(div);
         });
 
-        function runCmd(fullCommand) {
-            socket.emit("admin-command", { password: pass, fullCommand: fullCommand });
-            // Remove from list after clicking
-            const name = fullCommand.split(' ')[1].toLowerCase();
-            document.getElementById(`card-${name}`)?.remove();
-        }
-    </script>
+        aList.innerHTML = active.length ? "" : '<p style="color: #94a3b8;">No users online...</p>';
+        active.forEach(name => {
+            const div = document.createElement('div');
+            div.className = "user-row";
+            div.innerHTML = `<span>${name} (Online)</span> 
+                <button class="btn-kick" onclick="exec('kick ${name}')">Kick</button>`;
+            aList.appendChild(div);
+        });
+    }
+
+    function exec(fullCommand) {
+        socket.emit("admin-command", { password: password, fullCommand: fullCommand });
+    }
+</script>
 </body>
 </html>
